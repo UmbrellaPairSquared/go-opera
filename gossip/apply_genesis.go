@@ -1,14 +1,17 @@
 package gossip
 
 import (
+	"io"
 	"errors"
 
+	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/Fantom-foundation/go-opera/evmcore"
 	"github.com/Fantom-foundation/go-opera/gossip/blockproc"
@@ -18,12 +21,13 @@ import (
 	"github.com/Fantom-foundation/go-opera/inter/drivertype"
 	"github.com/Fantom-foundation/go-opera/opera"
 	"github.com/Fantom-foundation/go-opera/opera/genesis"
+	"github.com/Fantom-foundation/go-opera/snapshot"
 )
 
 // ApplyGenesis writes initial state.
-func (s *Store) ApplyGenesis(blockProc BlockProc, g opera.Genesis) (genesisHash hash.Hash, err error) {
+func (s *Store) ApplyGenesis(blockProc BlockProc, snap io.Reader, g opera.Genesis) (genesisHash hash.Hash, err error) {
 	// if we'here, then it's first time genesis is applied
-	err = s.applyEpoch1Genesis(blockProc, g)
+	err = s.applyEpoch1Genesis(blockProc, snap, g)
 	if err != nil {
 		return genesisHash, err
 	}
@@ -33,7 +37,7 @@ func (s *Store) ApplyGenesis(blockProc BlockProc, g opera.Genesis) (genesisHash 
 	return genesisHash, err
 }
 
-func (s *Store) applyEpoch0Genesis(g opera.Genesis) (evmBlock *evmcore.EvmBlock, err error) {
+func (s *Store) applyEpoch0Genesis(snap io.Reader, g opera.Genesis) (evmBlock *evmcore.EvmBlock, err error) {
 	// write genesis blocks
 	var highestBlock blockproc.BlockCtx
 	var startingRoot hash.Hash
@@ -119,8 +123,8 @@ func (s *Store) applyEpoch0Genesis(g opera.Genesis) (evmBlock *evmcore.EvmBlock,
 	return evmBlock, nil
 }
 
-func (s *Store) applyEpoch1Genesis(blockProc BlockProc, g opera.Genesis) (err error) {
-	evmBlock0, err := s.applyEpoch0Genesis(g)
+func (s *Store) applyEpoch1Genesis(blockProc BlockProc, snap io.Reader, g opera.Genesis) (err error) {
+	evmBlock0, err := s.applyEpoch0Genesis(snap, g)
 	if err != nil {
 		return err
 	}
@@ -176,6 +180,26 @@ func (s *Store) applyEpoch1Genesis(blockProc BlockProc, g opera.Genesis) (err er
 	if len(skippedTxs) != 0 {
 		return errors.New("genesis transaction is skipped")
 	}
+
+	// Load the snapshot
+	if snap != nil {
+		// Open the state
+		statedb, err := s.evm.StateDB(bs.FinalizedStateRoot)
+		if err != nil {
+			return err
+		}
+
+		log.Info("Restoring snapshot")
+		newRoot, err := snapshot.Restore(statedb, snap, 128*opt.MiB)
+		if err != nil {
+			return err
+		}
+		log.Info("Restored snapshot")
+
+		// Modify the previous block's root
+		evmBlock.Root = common.Hash(newRoot)
+	}
+
 	bs = txListener.Finalize()
 	bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 

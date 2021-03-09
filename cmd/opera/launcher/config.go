@@ -26,6 +26,7 @@ import (
 	"github.com/Fantom-foundation/go-opera/integration"
 	"github.com/Fantom-foundation/go-opera/integration/makegenesis"
 	"github.com/Fantom-foundation/go-opera/opera/genesisstore"
+	"github.com/Fantom-foundation/go-opera/snapshot"
 	futils "github.com/Fantom-foundation/go-opera/utils"
 	"github.com/Fantom-foundation/go-opera/vecmt"
 )
@@ -62,6 +63,16 @@ var (
 		Value: utils.DirectoryString(DefaultDataDir()),
 	}
 
+	SaveSnapshotFlag = cli.StringFlag{
+		Name: "save-snapshot",
+		Usage:"'path to snapshot file' - saves the state to the file",
+	}
+
+	LoadSnapshotFlag = cli.StringFlag{
+		Name: "load-snapshot",
+		Usage:"'path to snapshot file' - load the state from the file; applied with the genesis",
+	}
+
 	// GenesisFlag specifies network genesis configuration
 	GenesisFlag = cli.StringFlag{
 		Name:  "genesis",
@@ -84,6 +95,7 @@ var tomlSettings = toml.Config{
 
 type config struct {
 	Node          node.Config
+	Snapshot      snapshot.Config
 	Opera         gossip.Config
 	OperaStore    gossip.StoreConfig
 	Lachesis      abft.Config
@@ -93,6 +105,7 @@ type config struct {
 
 func (c *config) AppConfigs() integration.Configs {
 	return integration.Configs{
+		Snapshot:      c.Snapshot,
 		Opera:         c.Opera,
 		OperaStore:    c.OperaStore,
 		Lachesis:      c.Lachesis,
@@ -258,6 +271,21 @@ func setTxPool(ctx *cli.Context, cfg *evmcore.TxPoolConfig) {
 	}
 }
 
+func snapshotConfigWithFlags(ctx *cli.Context, src snapshot.Config) (snapshot.Config, error) {
+	cfg := src
+
+  utils.CheckExclusive(ctx, LoadSnapshotFlag, SaveSnapshotFlag)
+	if ctx.GlobalIsSet(LoadSnapshotFlag.Name) {
+		cfg.SnapshotPath = ctx.GlobalString(LoadSnapshotFlag.Name)
+	}
+	if ctx.GlobalIsSet(SaveSnapshotFlag.Name) {
+		cfg.Save = true
+		cfg.SnapshotPath = ctx.GlobalString(SaveSnapshotFlag.Name)
+	}
+
+	return cfg, nil
+}
+
 func gossipConfigWithFlags(ctx *cli.Context, src gossip.Config) (gossip.Config, error) {
 	cfg := src
 
@@ -319,6 +347,7 @@ func mayMakeAllConfigs(ctx *cli.Context) (*config, error) {
 	// Defaults (low priority)
 	cfg := config{
 		Node:          defaultNodeConfig(),
+		Snapshot:      snapshot.DefaultConfig(),
 		Opera:         gossip.DefaultConfig(),
 		OperaStore:    gossip.DefaultStoreConfig(),
 		Lachesis:      abft.DefaultConfig(),
@@ -339,6 +368,7 @@ func mayMakeAllConfigs(ctx *cli.Context) (*config, error) {
 
 	// Apply flags (high priority)
 	var err error
+	cfg.Snapshot, err = snapshotConfigWithFlags(ctx, cfg.Snapshot)
 	cfg.Opera, err = gossipConfigWithFlags(ctx, cfg.Opera)
 	if err != nil {
 		return nil, err

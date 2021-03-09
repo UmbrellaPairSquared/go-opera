@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/cmd/utils"
@@ -23,6 +24,7 @@ import (
 	"github.com/Fantom-foundation/go-opera/cmd/opera/launcher/tracing"
 	"github.com/Fantom-foundation/go-opera/debug"
 	"github.com/Fantom-foundation/go-opera/flags"
+	"github.com/Fantom-foundation/go-opera/snapshot"
 	"github.com/Fantom-foundation/go-opera/gossip"
 	"github.com/Fantom-foundation/go-opera/integration"
 	"github.com/Fantom-foundation/go-opera/utils/errlock"
@@ -60,6 +62,8 @@ func init() {
 
 	// Flags that configure the node.
 	nodeFlags = []cli.Flag{
+		SaveSnapshotFlag,
+		LoadSnapshotFlag,
 		GenesisFlag,
 		utils.IdentityFlag,
 		utils.UnlockedAccountFlag,
@@ -260,6 +264,20 @@ func makeNode(ctx *cli.Context, cfg *config, genesis integration.InputGenesis) (
 	engine, dagIndex, gdb, cdb, genesisStore, blockProc := integration.MakeEngine(integration.DBProducer(chaindataDir), genesis, cfg.AppConfigs())
 	_ = genesis.Close()
 	metrics.SetDataDir(cfg.Node.DataDir)
+
+	if cfg.Snapshot.Save && cfg.Snapshot.SnapshotPath != "" {
+		log.Info("Creating snapshot")
+		blockState := gdb.GetBlockState()
+		statedb, _ := gdb.StateDB(blockState.FinalizedStateRoot)
+		file, err := os.Create(cfg.Snapshot.SnapshotPath)
+		if err == nil {
+			 err = snapshot.NewSnapshot(statedb, common.Hash(blockState.LastBlock.Atropos), common.Hash(blockState.FinalizedStateRoot), file)
+		}
+		if err != nil {
+			log.Crit("Invalid file to save a snapshot to")
+		}
+		log.Info("Finished snapshot")
+	}
 
 	valKeystore := valkeystore.NewDefaultFileKeystore(path.Join(getValKeystoreDir(cfg.Node), "validator"))
 	valPubkey := cfg.Opera.Emitter.Validator.PubKey

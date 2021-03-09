@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/simulations/adapters"
 	"github.com/status-im/keycard-go/hexutils"
 
+	"github.com/Fantom-foundation/go-opera/snapshot"
 	"github.com/Fantom-foundation/go-opera/gossip"
 	"github.com/Fantom-foundation/go-opera/inter/validatorpk"
 	"github.com/Fantom-foundation/go-opera/valkeystore"
@@ -23,6 +24,7 @@ var (
 func NewIntegration(ctx *adapters.ServiceContext, genesis InputGenesis, stack *node.Node) *gossip.Service {
 	gossipCfg := gossip.FakeConfig(1)
 	cfg := Configs{
+		Snapshot:      snapshot.DefaultConfig(),
 		Opera:         gossipCfg,
 		OperaStore:    gossip.DefaultStoreConfig(),
 		Lachesis:      abft.DefaultConfig(),

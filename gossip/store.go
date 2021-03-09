@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+  "github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/Fantom-foundation/lachesis-base/kvdb/flushable"
@@ -12,6 +13,7 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/kvdb/table"
 	"github.com/Fantom-foundation/lachesis-base/utils/wlru"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/core/state"
 
 	"github.com/Fantom-foundation/go-opera/gossip/evmstore"
 	"github.com/Fantom-foundation/go-opera/gossip/sfcapi"
@@ -162,6 +164,11 @@ func (s *Store) Commit() error {
 	// Flush the DBs
 	s.FlushBlockEpochState()
 	return s.dbs.Flush(flushID)
+}
+
+// Expose the StateDB to code outside of gossip
+func (s *Store) StateDB(from hash.Hash) (*state.StateDB, error) {
+	return s.evm.StateDB(from)
 }
 
 /*

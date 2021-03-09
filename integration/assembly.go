@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"os"
+	"io"
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
@@ -16,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 
+	"github.com/Fantom-foundation/go-opera/snapshot"
 	"github.com/Fantom-foundation/go-opera/gossip"
 	"github.com/Fantom-foundation/go-opera/opera"
 	"github.com/Fantom-foundation/go-opera/opera/genesisstore"
@@ -35,6 +38,7 @@ func (e *GenesisMismatchError) Error() string {
 }
 
 type Configs struct {
+	Snapshot      snapshot.Config
 	Opera         gossip.Config
 	OperaStore    gossip.StoreConfig
 	Lachesis      abft.Config
@@ -87,7 +91,14 @@ func rawMakeEngine(gdb *gossip.Store, cdb *abft.Store, g opera.Genesis, cfg Conf
 		return nil, nil, blockProc, fmt.Errorf("failed to migrate Gossip DB: %v", err)
 	}
 	if applyGenesis {
-		_, err := gdb.ApplyGenesis(blockProc, g)
+		var snap io.Reader = nil
+		if !cfg.Snapshot.Save && cfg.Snapshot.SnapshotPath != "" {
+			snap, err = os.Open(cfg.Snapshot.SnapshotPath)
+			if err != nil {
+				return nil, nil, blockProc, err
+			}
+		}
+		_, err := gdb.ApplyGenesis(blockProc, snap, g)
 		if err != nil {
 			return nil, nil, blockProc, fmt.Errorf("failed to write Gossip genesis state: %v", err)
 		}
